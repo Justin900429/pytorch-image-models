@@ -324,7 +324,7 @@ class BasicBlock(nn.Module):
     def __init__(
             self, inplanes, planes, stride=1, downsample=None, cardinality=1, base_width=64,
             reduce_first=1, dilation=1, first_dilation=None, act_layer=nn.ReLU, norm_layer=nn.BatchNorm2d,
-            attn_layer=None, aa_layer=None, drop_block=None, drop_path=None):
+            attn_layer=None, aa_layer=None, drop_block=None, drop_path=None, use_quantized=False):
         super(BasicBlock, self).__init__()
 
         assert cardinality == 1, 'BasicBlock only supports cardinality of 1'
@@ -353,6 +353,10 @@ class BasicBlock(nn.Module):
         self.stride = stride
         self.dilation = dilation
         self.drop_path = drop_path
+        
+        self.use_quantized = use_quantized
+        if self.use_quantized:
+            self.skip_add = nn.quantized.FloatFunctional()
 
     def zero_init_last(self):
         nn.init.zeros_(self.bn2.weight)
@@ -377,7 +381,11 @@ class BasicBlock(nn.Module):
 
         if self.downsample is not None:
             shortcut = self.downsample(shortcut)
-        x += shortcut
+        
+        if self.use_quantized:
+            x = self.skip_add.add(x, shortcut)
+        else:
+            x += shortcut
         x = self.act2(x)
 
         return x
@@ -389,7 +397,7 @@ class Bottleneck(nn.Module):
     def __init__(
             self, inplanes, planes, stride=1, downsample=None, cardinality=1, base_width=64,
             reduce_first=1, dilation=1, first_dilation=None, act_layer=nn.ReLU, norm_layer=nn.BatchNorm2d,
-            attn_layer=None, aa_layer=None, drop_block=None, drop_path=None):
+            attn_layer=None, aa_layer=None, drop_block=None, drop_path=None, use_quantized=False):
         super(Bottleneck, self).__init__()
 
         width = int(math.floor(planes * (base_width / 64)) * cardinality)
@@ -420,7 +428,11 @@ class Bottleneck(nn.Module):
         self.stride = stride
         self.dilation = dilation
         self.drop_path = drop_path
-
+        
+        self.use_quantized = use_quantized
+        if self.use_quantized:
+            self.skip_add = nn.quantized.FloatFunctional()
+        
     def zero_init_last(self):
         nn.init.zeros_(self.bn3.weight)
 
@@ -448,7 +460,10 @@ class Bottleneck(nn.Module):
 
         if self.downsample is not None:
             shortcut = self.downsample(shortcut)
-        x += shortcut
+        if self.use_quantized:
+            x = self.skip_add.add(x, shortcut)
+        else:
+            x += shortcut
         x = self.act3(x)
 
         return x
